@@ -1,0 +1,6 @@
+{
+  "name": "QuizGen Guru",
+  "description": "Generator naskah soal asesmen SMA (Fase E & F) otomatis dengan stimulus HOTS dan TKA, pilihan ganda A-E (5 opsi), kunci jawaban, serta prompt gambar/diagram AI siap pakai.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

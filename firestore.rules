@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidQuiz(data, userId) {
+      return data.id is string && data.id.size() <= 128
+        && data.userId == userId
+        && data.title is string && data.title.size() <= 256
+        && data.subject is string && data.subject.size() <= 128
+        && data.questions is list && data.questions.size() <= 100;
+    }
+
+    function isValidProfile(data, userId) {
+      return data.userId == userId
+        && data.email is string && data.email.size() <= 256;
+    }
+
+    // User Profile Document
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow create: if isOwner(userId) && isValidId(userId) && isValidProfile(incoming(), userId);
+      allow update: if isOwner(userId) && isValidId(userId) && isValidProfile(incoming(), userId) && incoming().userId == existing().userId;
+      allow delete: if false;
+
+      // Quizzes Subcollection
+      match /quizzes/{quizId} {
+        allow get, list: if isOwner(userId) && isValidId(userId);
+        allow create: if isOwner(userId) && isValidId(userId) && isValidId(quizId) && isValidQuiz(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(userId) && isValidId(quizId) && isValidQuiz(incoming(), userId) && incoming().userId == existing().userId && incoming().createdAt == existing().createdAt;
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidId(quizId);
+      }
+    }
+  }
+}
