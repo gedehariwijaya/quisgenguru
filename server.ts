@@ -40,10 +40,10 @@ async function generateContentWithRetryAndFallback(
   }
 ) {
   // Sequence of high-performance models to try if high demand occurs
-  // Deprecated gemini-2.5-flash is removed (returns 404)
+  // gemini-3.1-flash-lite is prioritized for ultra-high speed (<1.2s) and high capacity without 503 spikes
   const modelsToTry = [
-    params.primaryModel || 'gemini-3.8-flash',
-    'gemini-3.1-flash-lite',
+    params.primaryModel || 'gemini-3.1-flash-lite',
+    'gemini-3.8-flash',
     'gemini-3.6-flash',
     'gemini-flash-latest',
   ];
@@ -66,27 +66,36 @@ async function generateContentWithRetryAndFallback(
         const errStatus = err?.status || err?.code;
         const errMsg = err?.message || String(err);
 
-        // If model is deprecated or not found (404), do not retry; immediately cascade
+        // If model is deprecated or not found (404), do not retry; immediately cascade to next model
         if (errStatus === 404 || errStatus === 'NOT_FOUND' || errMsg.includes('404') || errMsg.includes('no longer available')) {
           console.warn(`[Gemini API] Model ${model} is not available (404), cascading to next model...`);
           break;
         }
 
-        const isUnavailableOrRateLimited =
+        const is503HighDemand =
           errStatus === 503 ||
           errStatus === 'UNAVAILABLE' ||
-          errStatus === 429 ||
-          errStatus === 'RESOURCE_EXHAUSTED' ||
           errMsg.includes('503') ||
           errMsg.includes('high demand') ||
           errMsg.includes('spikes in demand') ||
-          errMsg.includes('overloaded') ||
-          errMsg.includes('temporarily');
+          errMsg.includes('overloaded');
+
+        // If 503 occurs, this specific model is overloaded right now. Cascade immediately to next model!
+        if (is503HighDemand) {
+          console.warn(`[Gemini API] Model ${model} is experiencing high demand (503). Cascading immediately to next model...`);
+          break;
+        }
+
+        const isRateLimited =
+          errStatus === 429 ||
+          errStatus === 'RESOURCE_EXHAUSTED' ||
+          errMsg.includes('429') ||
+          errMsg.includes('quota');
 
         console.warn(`[Gemini API] Model ${model} returned error (attempt ${attempt}): ${errMsg}`);
 
-        if (isUnavailableOrRateLimited && attempt < maxAttempts) {
-          const delayMs = attempt * 1000 + Math.random() * 400;
+        if (isRateLimited && attempt < maxAttempts) {
+          const delayMs = attempt * 800 + Math.random() * 300;
           await new Promise((resolve) => setTimeout(resolve, delayMs));
           continue;
         }
@@ -97,6 +106,32 @@ async function generateContentWithRetryAndFallback(
   }
 
   throw lastError;
+}
+
+// Robust JSON extraction helper
+function safeParseJson(raw: string): any {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // Strip markdown code fences if present
+    const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+    try {
+      return JSON.parse(cleaned);
+    } catch {
+      // Find outermost { ... }
+      const firstOpen = cleaned.indexOf('{');
+      const lastClose = cleaned.lastIndexOf('}');
+      if (firstOpen !== -1 && lastClose !== -1 && lastClose > firstOpen) {
+        try {
+          return JSON.parse(cleaned.substring(firstOpen, lastClose + 1));
+        } catch {
+          // continue
+        }
+      }
+      throw new Error('Respon dari AI tidak dapat diproses menjadi format naskah soal JSON yang valid.');
+    }
+  }
 }
 
 // Health check endpoint
@@ -270,14 +305,7 @@ Pastikan format JSON yang dihasilkan valid sesuai struktur yang diminta.`;
     });
 
     const responseText = response.text || '{}';
-    let parsedData: any;
-    try {
-      parsedData = JSON.parse(responseText);
-    } catch (parseErr) {
-      console.error('JSON parsing failed, falling back to cleanup:', parseErr);
-      const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-      parsedData = JSON.parse(cleanJson);
-    }
+    const parsedData = safeParseJson(responseText);
 
     // Ensure questions have valid ids, options, and visual prompt metadata
     const questions = (parsedData.questions || []).map((q: any, idx: number) => {
@@ -430,7 +458,7 @@ Soal harus bersifat memperkuat konsep dasar (scaffolding), memberikan petunjuk y
       },
     });
 
-    const parsed = JSON.parse(response.text || '{}');
+    const parsed = safeParseJson(response.text || '{}');
     res.json({ success: true, quiz: parsed, ...parsed });
   } catch (error: any) {
     console.error('Error generating remedial quiz:', error);

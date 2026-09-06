@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { 
   Upload, FileText, Sparkles, CheckCircle2, AlertCircle, 
   FileUp, Hash, Layers, BrainCircuit, Image, Download, 
-  ArrowRight, RefreshCw, Check, BookOpen, SlidersHorizontal, Cloud
+  ArrowRight, RefreshCw, Check, BookOpen, SlidersHorizontal, Cloud, X
 } from 'lucide-react';
 import { Quiz, QuestionType, UserProfile, AssessmentFocus } from '../types';
 import { samplePresets } from '../data/sampleQuizzes';
@@ -170,12 +170,16 @@ export const QuizGenerator: React.FC<QuizGeneratorProps> = ({
       const rawMsg = err?.message || '';
       let displayError = rawMsg;
       if (rawMsg.includes('503') || rawMsg.includes('high demand') || rawMsg.includes('UNAVAILABLE') || rawMsg.includes('overloaded')) {
-        displayError = 'Layanan AI sedang sibuk. Silakan tekan tombol "Susun Naskah Soal" kembali.';
-      } else if (rawMsg.includes('429') || rawMsg.includes('RESOURCE_EXHAUSTED')) {
-        displayError = 'Batas kuota sementara tercapai. Mohon tunggu beberapa detik lalu coba lagi.';
+        displayError = 'Server AI sedang melayani antrean trafik tinggi sementara. Silakan klik tombol "Coba Lagi Sekarang" di samping.';
+      } else if (rawMsg.includes('429') || rawMsg.includes('RESOURCE_EXHAUSTED') || rawMsg.includes('quota')) {
+        displayError = 'Batas permintaan per menit tercapai sementara. Mohon tunggu beberapa detik lalu klik "Coba Lagi Sekarang".';
+      } else if (rawMsg.includes('JSON') || rawMsg.includes('belum lengkap') || rawMsg.includes('format')) {
+        displayError = 'Struktur naskah soal dari AI terpotong atau belum lengkap. Silakan klik tombol "Coba Lagi Sekarang".';
+      } else if (!rawMsg || rawMsg.includes('Gagal menyusun naskah soal')) {
+        displayError = 'Server AI sedang memproses antrean tinggi atau terjadi jeda koneksi. Silakan klik tombol "Coba Lagi Sekarang" di samping.';
       }
       
-      setErrorMessage(displayError || 'Terjadi kendala saat menyusun naskah soal.');
+      setErrorMessage(displayError);
     } finally {
       setIsGenerating(false);
     }
@@ -534,9 +538,45 @@ export const QuizGenerator: React.FC<QuizGeneratorProps> = ({
 
         {/* Error notification */}
         {errorMessage && (
-          <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-rose-700 text-xs">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{errorMessage}</span>
+          <div className="p-4 bg-rose-50/90 border border-rose-200 rounded-2xl text-rose-900 text-xs shadow-xs space-y-2.5 transition-all">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <div className="p-1.5 rounded-lg bg-rose-100 text-rose-700 shrink-0 mt-0.5">
+                  <AlertCircle className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-900 text-xs sm:text-sm">
+                    Kendala Penyusunan Naskah Soal AI
+                  </h4>
+                  <p className="text-slate-600 text-xs mt-0.5 leading-relaxed">
+                    {errorMessage}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setErrorMessage(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-rose-100/60 rounded-md transition-colors shrink-0"
+                title="Tutup notifikasi"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-rose-200/60">
+              <div className="text-[11px] text-slate-500">
+                Saran: Pastikan materi terisi spesifik atau coba salah satu Preset Topik.
+              </div>
+              <button
+                type="button"
+                onClick={handleGenerateScript}
+                disabled={isGenerating}
+                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-semibold rounded-lg text-xs flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
+                <span>Coba Lagi Sekarang</span>
+              </button>
+            </div>
           </div>
         )}
 
