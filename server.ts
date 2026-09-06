@@ -40,11 +40,12 @@ async function generateContentWithRetryAndFallback(
   }
 ) {
   // Sequence of high-performance models to try if high demand occurs
+  // Deprecated gemini-2.5-flash is removed (returns 404)
   const modelsToTry = [
-    params.primaryModel || 'gemini-2.5-flash',
-    'gemini-flash-latest',
-    'gemini-3.7-flash',
+    params.primaryModel || 'gemini-3.8-flash',
     'gemini-3.1-flash-lite',
+    'gemini-3.6-flash',
+    'gemini-flash-latest',
   ];
 
   let lastError: any = null;
@@ -64,6 +65,13 @@ async function generateContentWithRetryAndFallback(
         lastError = err;
         const errStatus = err?.status || err?.code;
         const errMsg = err?.message || String(err);
+
+        // If model is deprecated or not found (404), do not retry; immediately cascade
+        if (errStatus === 404 || errStatus === 'NOT_FOUND' || errMsg.includes('404') || errMsg.includes('no longer available')) {
+          console.warn(`[Gemini API] Model ${model} is not available (404), cascading to next model...`);
+          break;
+        }
+
         const isUnavailableOrRateLimited =
           errStatus === 503 ||
           errStatus === 'UNAVAILABLE' ||
@@ -78,7 +86,7 @@ async function generateContentWithRetryAndFallback(
         console.warn(`[Gemini API] Model ${model} returned error (attempt ${attempt}): ${errMsg}`);
 
         if (isUnavailableOrRateLimited && attempt < maxAttempts) {
-          const delayMs = attempt * 800 + Math.random() * 300;
+          const delayMs = attempt * 1000 + Math.random() * 400;
           await new Promise((resolve) => setTimeout(resolve, delayMs));
           continue;
         }
